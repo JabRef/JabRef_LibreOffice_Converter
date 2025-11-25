@@ -9,12 +9,40 @@ private oRefMarks as object		&apos;Document references
 private b as integer
 private dia As Object
 private frm As Object
+private useCslMode as Boolean	&apos;True for CSL (JABREF_), False for JStyle (JR_cite)
 
-&apos;************************* Replace JabRef reference field with cite key***************************
-	&apos;example  Jabref field--&gt;\cite{_1_Mehringer965} 
-Sub Main	
+&apos;************************* Helper Functions ***************************
+Function IsJabRefReference(ref as string) as Boolean
+    &apos; Check for both old JR_cite and new JABREF_ formats
+    IsJabRefReference = (InStr(ref, &quot;JR_cite&quot;) &gt; 0) Or (InStr(ref, &quot;JABREF_&quot;) &gt; 0)
+End Function
 
+Function GetCiteKey(ref as string) as string
+    Dim temp as string
+    temp = ref
 
+    &apos; Handle old format: JR_cite[counter]_[type]_[key]
+    If Left(temp, 7) = &quot;JR_cite&quot; Then
+        temp = Mid(temp, 8)  &apos; Strip &quot;JR_cite&quot;
+        GetCiteKey = temp
+    &apos; Handle new format: JABREF_[key] CID_[number] [command]
+    ElseIf Left(temp, 7) = &quot;JABREF_&quot; Then
+        temp = Mid(temp, 8)  &apos; Strip &quot;JABREF_&quot;
+        &apos; Extract just the cite key (everything before &quot; CID_&quot;)
+        Dim cidPos as integer
+        cidPos = InStr(temp, &quot; CID_&quot;)
+        If cidPos &gt; 0 Then
+            GetCiteKey = Left(temp, cidPos - 1)
+        Else
+            GetCiteKey = temp
+        End If
+    Else
+        GetCiteKey = temp
+    End If
+End Function
+
+&apos;************************* Main Entry Point ***************************
+Sub Main
 	BasicLibraries.LoadLibrary(&quot;JabRefConverterLib&quot;)
 	DialogLibraries.LoadLibrary(&quot;JabRefConverterLib&quot;)
 	frm = DialogLibraries.JabRefConverterLib.JabRefConvert
@@ -22,200 +50,201 @@ Sub Main
 	dia.Execute()
 End Sub
 
-
-	
+&apos;************************* Replace JabRef reference field with cite key***************************
 Sub FromTextToReference
-Dim SearchDesc As Object
-Dim Doc As Object
- dim j as integer &apos; counter for message box
-  dim l as integer &apos; counter for message box 
-   dim k as integer &apos; counter for message box 
+	&apos; Read the selected mode from radio buttons
+	Dim oCslRadio As Object
+	oCslRadio = dia.getControl(&quot;optCslMode&quot;).Model
 
-Doc = ThisComponent
+	If oCslRadio.State = 1 Then
+		useCslMode = True
+	Else
+		useCslMode = False
+	End If
 
-Dim SearchDescRegExp As Object  
-SearchDescRegExp = Doc.createSearchDescriptor
-SearchDescRegExp.SearchString = &quot;\\cite\{[^\}]+\}&quot;
-SearchDescRegExp.SearchRegularExpression = True
-Found = Doc.findFirst (SearchDescRegExp)
+	Dim SearchDesc As Object
+	Dim Doc As Object
+	dim j as integer &apos; counter for message box
+	dim l as integer &apos; counter for message box
+	dim k as integer &apos; counter for message box
 
+	Doc = ThisComponent
 
-J=0
-l=0
-k=0
+	Dim SearchDescRegExp As Object
+	SearchDescRegExp = Doc.createSearchDescriptor
+	SearchDescRegExp.SearchString = &quot;\\cite\{[^\}]+\}&quot;
+	SearchDescRegExp.SearchRegularExpression = True
+	Found = Doc.findFirst (SearchDescRegExp)
 
+	J=0
+	l=0
+	k=0
+	b=100
 
-b=100
+	&apos; b necessary for plain \cite{key} to prevent a mix up with existing jabref citations
+	&apos; by using b we start with 100 to prevent double usage
 
-&apos; b necessary for plain \cite{key} to prevent a mix up with existing jabref citations because jabref has an internal identifier for every instance of a citation
-&apos; eg. JR_cite_1_Simmel ...JR_cite0_1_Simmel  .... 
-&apos; by using b we start with JR_cite100_1_Simmel to prevent double usage. 
+	Do Until IsNull(Found)
+		Controller = Doc.CurrentController
+		VC = Controller.ViewCursor
+		VC.gotoRange(Found,False)
+		subEventReference(j,l,k)
+		Found = Doc.findNext( Found.End, SearchDescRegExp)
+	Loop
 
+	If Not IsNull(dia) then
+		dia.endExecute()
+	End If
 
-Do Until IsNull(Found)
-	Controller = Doc.CurrentController
-	VC = Controller.ViewCursor
-	VC.gotoRange(Found,False)
-    subEventReference(j,l,k)
-    Found = Doc.findNext( Found.End, SearchDescRegExp)
-Loop
-If Not IsNull(dia) then
-       dia.endExecute()
-   End If
-Msgbox (&quot;Conversion to JabRef Reference successful &quot; &amp; chr(13) &amp; + CStr(k) + &quot; (in-text) citations &quot;  &amp; chr(13) &amp; + CStr(j) + &quot; empty citations &quot; &amp; chr(13) &amp; + CStr(l) + &quot; manually added \cite{keys} &quot; &amp; chr(13) &amp;   chr(13) &amp; &quot; Now you can refresh the fields using Jabref. &quot;,0 ,&quot;OK&quot;)
+	Dim modeText as String
+	If useCslMode Then
+		modeText = &quot;CSL mode (JABREF_)&quot;
+	Else
+		modeText = &quot;JStyle mode (JR_cite)&quot;
+	End If
 
+	Msgbox (&quot;Conversion to JabRef Reference successful (&quot; &amp; modeText &amp; &quot;)&quot; &amp; chr(13) &amp; CStr(k) + &quot; (in-text) citations &quot; &amp; chr(13) &amp; CStr(j) + &quot; empty citations &quot; &amp; chr(13) &amp; CStr(l) + &quot; manually added \cite{keys} &quot; &amp; chr(13) &amp; chr(13) &amp; &quot; Now you can refresh the fields using Jabref. &quot;,0 ,&quot;OK&quot;)
 End Sub
 
-
-
+&apos;************************* Convert JabRef references back to plain text ***************************
 Sub FromReferenceToText
- dim temp as string
+	dim temp as string
+	Dim i As Integer, oRefmarks, oRefmarkNames()
+	dim j as integer
+	dim l as integer
 
+	oRefmarks = ThisComponent.getReferenceMarks()
+	oRefmarkNames = oRefmarks.getElementNames()
 
- Dim i As Integer, oRefmarks, oRefmarkNames()
- dim j as integer
-  dim l as integer
- 
-  oRefmarks = ThisComponent.getReferenceMarks()
-  oRefmarkNames = oRefmarks.getElementNames()
+	j=0
+	l=0
 
+	&apos;  insert a string at every reference mark
+	For i = 0 To Ubound( oRefmarkNames )
+		ref = oRefmarkNames(i)
 
-j=0
-l=0 
+		&apos; Check for both JR_cite and JABREF_ formats
+		If IsJabRefReference(ref) Then
+			temp = GetCiteKey(ref)
 
-&apos;  insert a string at every reference mark
-For i = 0 To Ubound( oRefmarkNames )
-ref = oRefmarkNames(i)
-If instr(ref, &quot;JR_cite&quot;) Then
-  temp=ref
-   if left(temp,7)=&quot;JR_cite&quot; then
-       temp = mid(temp,8)
-   end if
+			If InStr(temp, &quot;_3_&quot;) = 0 Then
+				anchor = oRefmarks.getByName(ref).getanchor
+				rr = anchor.gettext.createtextcursorbyrange(anchor)
+				rr.string = &quot;\cite{&quot; + temp + &quot;}&quot;
+				j = j + 1
+			Else
+				&apos; For empty citations
+				anchor = oRefmarks.getByName(ref).getanchor
+				rr = anchor.gettext.createtextcursorbyrange(anchor)
+				rr.string = &quot;\cite{&quot; + temp + &quot;}&quot;
+				l = l + 1
+			End If
+		End If
+	Next
 
-if instr(temp, &quot;_3_&quot;)=0 Then
-anchor = oRefmarks.getByName( ref).getanchor
-rr= anchor.gettext.createtextcursorbyrange(anchor)
-rr.string=&quot;\cite{&quot; +temp + &quot;}&quot;
-  J=j+1
-else
-&apos; for empty citations.	
-anchor = oRefmarks.getByName( ref).getanchor
-rr= anchor.gettext.createtextcursorbyrange(anchor)
-rr.string=&quot;\cite{&quot; +temp + &quot;}&quot;
-  l=l+1	
-end if
+	&apos; Dispose all remaining jabref references in a second loop
+	For i = 0 To Ubound( oRefmarkNames )
+		ref = oRefmarkNames(i)
+		If IsJabRefReference(ref) Then
+			On Error Resume Next
+			oRefmarks.getByName(ref).dispose()
+		End If
+	Next
 
-End if
-Next
+	If Not IsNull(dia) then
+		dia.endExecute()
+	End If
 
-&apos;problem: empty citations don&apos;t get disposed.
-	&apos; solution: a) dispose all remaining jabref references. in a second loop
-For i = 0 To Ubound( oRefmarkNames )
-  ref = oRefmarkNames(i)
-    If instr(ref(i), &quot;JR_cite&quot;) Then
-	On Error Resume Next 
- 	oRefmarks.getByName( ref ).dispose()
-	
-
-End if
-Next
-If Not IsNull(dia) then
-       dia.endExecute()
-   End If
-Msgbox (&quot;Conversion to plain text code successful &quot;  &amp; chr(13) &amp; + CStr(j) + &quot; (in-text) citations &quot;  &amp; chr(13) &amp; CStr(l) + &quot; empty citations &quot;, ,&quot;OK&quot;)
-
-
-End Sub 
-
-
+	Msgbox (&quot;Conversion to plain text code successful &quot; &amp; chr(13) &amp; CStr(j) + &quot; (in-text) citations &quot; &amp; chr(13) &amp; CStr(l) + &quot; empty citations&quot;, ,&quot;OK&quot;)
+End Sub
 
 &apos;************************* Create a reference that JabRef can process ***************************
-	&apos;example \cite{_1_Mehringer965}-&gt; to Jabref field
-	&apos;example \cite{Mehringer965}-&gt; to JabRef field
-Sub subEventReference(j,l,k as integer)
-dim oRefField as object
- Dim i As Integer, oRefmarks, oRefmarkNames()
+Sub subEventReference(j, l, k as integer)
+	dim oRefField as object
+	Dim i As Integer, oRefmarks, oRefmarkNames()
+	Dim citeKey as string
+	Dim cleanKey as string
+	Dim isPlainCite as Boolean
 
- 
-oDoc = ThisComponent
-oRefMarks = oDoc.Referencemarks
-oRefmarkNames = oRefmarks.getElementNames()
+	oDoc = ThisComponent
+	oRefMarks = oDoc.Referencemarks
+	oRefmarkNames = oRefmarks.getElementNames()
 
+	oRefField = oDoc.createInstance(&quot;com.sun.star.text.ReferenceMark&quot;)
+	oSel = oDoc.getCurrentSelection().getByIndex(0)
 
-oRefField = oDoc.createInstance(&quot;com.sun.star.text.ReferenceMark&quot;)
-oSel = oDoc.getCurrentSelection().getByIndex(0)
-	if left(oSel.getString,6)=&quot;\cite{&quot; then
-		sSelection = &quot;JR_cite&quot;+mid(oSel.getString,7)
-		sSelection = left (sSelection,len(sSelection)-1)
-					&apos; just count empty citations
-					if InStr(oSel.getString, &quot;_3_&quot;)&lt;&gt;0 then
-					 j=j+1
-					end if
-					if InStr(oSel.getString, &quot;_2_&quot;)&lt;&gt;0 or InStr(oSel.getString, &quot;_1_&quot;) then
-					 k=k+1
-					end if
+	If Left(oSel.getString, 6) = &quot;\cite{&quot; Then
+		citeKey = Mid(oSel.getString, 7)
+		citeKey = Left(citeKey, Len(citeKey) - 1)
 
+		&apos; Determine if this is a plain cite (no _1_, _2_, _3_ markers)
+		isPlainCite = (InStr(citeKey, &quot;_1_&quot;) = 0 And InStr(citeKey, &quot;_2_&quot;) = 0 And InStr(citeKey, &quot;_3_&quot;) = 0)
 
-&apos;	routine to handle plain \cite{key} -&gt; ad an unique identifiy (a) 
+		&apos; Count citations
+		If InStr(citeKey, &quot;_3_&quot;) &lt;&gt; 0 Then
+			j = j + 1  &apos; Empty citations
+		ElseIf InStr(citeKey, &quot;_2_&quot;) &lt;&gt; 0 Or InStr(citeKey, &quot;_1_&quot;) &lt;&gt; 0 Then
+			k = k + 1  &apos; In-text citations with markers
+		ElseIf isPlainCite Then
+			l = l + 1  &apos; Plain citations without markers
+		End If
 
-	     if InStr(oSel.getString, &quot;_1_&quot;)=0 and InStr(oSel.getString, &quot;_2_&quot;)=0 and InStr(oSel.getString, &quot;_3_&quot;)=0 then
-	   	    sSelection = &quot;JR_cite&quot;+CStr(b)+&quot;_1_&quot;+mid(oSel.getString,7)
-			sSelection = left (sSelection,len(sSelection)-1)
+		&apos; Create reference mark in selected format
+		If useCslMode Then
+			&apos; CSL format: JABREF_[key] CID_[counter] cite
+			&apos; Clean the cite key first (remove any _1_, _2_, _3_ markers)
+			cleanKey = citeKey
+			If InStr(cleanKey, &quot;_1_&quot;) &gt; 0 Then
+				cleanKey = Mid(cleanKey, InStr(cleanKey, &quot;_1_&quot;) + 3)
+			ElseIf InStr(cleanKey, &quot;_2_&quot;) &gt; 0 Then
+				cleanKey = Mid(cleanKey, InStr(cleanKey, &quot;_2_&quot;) + 3)
+			ElseIf InStr(cleanKey, &quot;_3_&quot;) &gt; 0 Then
+				cleanKey = Mid(cleanKey, InStr(cleanKey, &quot;_3_&quot;) + 3)
+			End If
 
-			&apos; routine to prevent doubling of the same JR_cite[b]
-				For i = 0 To Ubound( oRefmarkNames )
-				If instr(oRefmarkNames(i),sSelection) Then
-				
-				 b=b+1
-				 sSelection = &quot;JR_cite&quot;+CStr(b)+&quot;_1_&quot;+mid(oSel.getString,7)
-				 sSelection = left (sSelection,len(sSelection)-1)
-				End if
-	    		Next
-		
-			l=l+1
-	   
-	   
-	     end if
+			sSelection = &quot;JABREF_&quot; + cleanKey + &quot; CID_&quot; + CStr(b) + &quot; cite&quot;
+			b = b + 1
+		Else
+			&apos; JStyle format: JR_cite[counter]_[type]_[key]
+			If isPlainCite Then
+				sSelection = &quot;JR_cite&quot; + CStr(b) + &quot;_1_&quot; + citeKey
 
+				&apos; Check for duplicates
+				For i = 0 To Ubound(oRefmarkNames)
+					If InStr(oRefmarkNames(i), sSelection) Then
+						b = b + 1
+						sSelection = &quot;JR_cite&quot; + CStr(b) + &quot;_1_&quot; + citeKey
+					End If
+				Next
+			Else
+				sSelection = &quot;JR_cite&quot; + citeKey
+			End If
+		End If
+	End If
 
-	end if
-subCreate(oRefField,sSelection)
-
-End sub
-
-&apos;********************* Create the field (sub routine) ***********************
-&apos;Sub subCreate(oField as object, sText as string)
-&apos;dim sRefname as string
-&apos;oField.setName(sText, oRefField)
-&apos;oDoc.currentController.ViewCursor.Text.insertTextContent(oDoc.currentController.ViewCursor, oField, True)
-&apos;End sub
+	subCreate(oRefField, sSelection)
+End Sub
 
 &apos;********************* Create the field (sub routine) ***********************
 Sub subCreate(oField as object, sText as string)
     Dim oText As Object
     Dim oSelection As Object
 
-    &apos; Setzt den Namen des Feldes
+    &apos; Set the field name
     oField.setName(sText)
 
-    &apos; Aktuelle Auswahl im Dokument erhalten
+    &apos; Get current selection in document
     oSelection = oDoc.getCurrentSelection()
     oText = oSelection.getByIndex(0)
 
-    &apos; Prüfen, ob der Text &quot;_3_&quot; enthält
+    &apos; Check if text contains &quot;_3_&quot; (empty citation)
     If InStr(oText.getString(), &quot;_3_&quot;) &lt;&gt; 0 Then
-        &apos; Löscht den selektierten Text, da dieser leer sein soll
+        &apos; Delete selected text as it should be empty
         oText.String = &quot;&quot;
-        
-       
     End If
 
-    &apos; Fügt das Feld an der aktuellen Cursor-Position ein
+    &apos; Insert field at current cursor position
     oDoc.currentController.ViewCursor.Text.insertTextContent(oDoc.currentController.ViewCursor, oField, Not (InStr(oText.getString(), &quot;_3_&quot;) &lt;&gt; 0))
 End Sub
-
-
-
-
 
 </script:module>

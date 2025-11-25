@@ -6,6 +6,6 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE. 
 
 Thanks to:
-JabRef for the logo (https://de.wikipedia.org/wiki/JabRef#/media/Datei:JabRef_Icon.svg) and a great piece of software
+Felix Wilke (https://github.com/teertinker) for creating and developing the initial versions of the extension (https://github.com/teertinker/JabRef_LibreOffice_Converter)
 JeJe from AOO forum for essential parts of the replace routine (https://forum.openoffice.org/en/forum/viewtopic.php?f=45&t=103298&p=499869#p499869)
-some fragments were taken from: http://www.klausneubeck.de/Tq_Makros.html
+Some fragments were taken from: http://www.klausneubeck.de/Tq_Makros.html
