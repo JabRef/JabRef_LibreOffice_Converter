@@ -35,12 +35,14 @@ Convert to text code:
 
 <img width=“300” src="Readme_images/c.png">
 
+<img width=“300” src="Readme_images/d.png">
+
 Now you can work on the manuscript with other text processors like MS Word.
 
 After finishing convert the "cite tags" back to a proper JabRef Reference in LibreOffice
-<img width=“300” src="Readme_images/d.png">
-
 <img width=“300” src="Readme_images/e.png">
+
+<img width=“300” src="Readme_images/f.png">
 
 ... you just need to refresh the database from within JabRef now.
 
