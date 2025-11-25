@@ -5,7 +5,7 @@ A LibreOffice extension that converts JabRef references to plain text code and v
 
 HowTo
 =====
-- Download & install the extension in LibreOffice (**JabRef_LibreOffice_Converter.oxt**)
+- Download & install the extension in LibreOffice (**JabRefConverter.oxt**)
 - Restart Libreoffice
 - Open your manuscript
 - Click on the JabRef icon in LibreOffice
