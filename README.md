@@ -31,6 +31,7 @@ A manuscript:
 <img width=“300” src="Readme_images/a.png"> 
 
 Convert to text code:
+
 <img width=“300” src="Readme_images/b.png">
 
 <img width=“300” src="Readme_images/c.png">
