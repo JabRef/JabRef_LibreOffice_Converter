@@ -28,17 +28,19 @@ Pictures
 ============
  
 A manuscript:  
-<img width=“300” src="Readme_images/Bildschirmfoto vom 2020-10-16 20-32-00.png"> 
+<img width=“300” src="Readme_images/a.png"> 
 
 Convert to text code:
-<img width=“300” src="Readme_images/Bildschirmfoto vom 2020-10-16 20-25-32.png">
+<img width=“300” src="Readme_images/b.png">
 
-<img width=“300” src="Readme_images/Bildschirmfoto vom 2020-10-16 20-25-55.png">
+<img width=“300” src="Readme_images/c.png">
 
 Now you can work on the manuscript with other text processors like MS Word.
 
 After finishing convert the "cite tags" back to a proper JabRef Reference in LibreOffice
-<img width=“300” src="Readme_images/Bildschirmfoto vom 2020-10-16 20-31-34.png">
+<img width=“300” src="Readme_images/d.png">
+
+<img width=“300” src="Readme_images/e.png">
 
 ... you just need to refresh the database from within JabRef now.
 
