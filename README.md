@@ -1,22 +1,23 @@
 # JabRef_LibreOffice_Converter
 A LibreOffice extension that converts JabRef references to plain text code and vice versa so that you can use your references with MS Office and other software.
 
-*Added Version 1.2 - no new features, but fixes recent version*
+*Version 2.0 - adds CSL support*
 
 HowTo
 =====
-- Donwload & install the extension in LibreOffice (**JabRefConverter.oxt**)
+- Download & install the extension in LibreOffice (**JabRef_LibreOffice_Converter.oxt**)
 - Restart Libreoffice
 - Open your manuscript
 - Click on the JabRef icon in LibreOffice
+- Select your mode of conversion (CSL or JStyle)
 - Convert
 
 
 What it does
 ============
-- Convert references created by JabRef into plain text code with a certain pattern: \cite{_1_Bibtexkey}
+- Convert references created by JabRef into plain text code with a certain pattern: `\cite{Bibtexkey}` (for CSL) or `\cite{_1_Bibtexkey}` (for JStyles)
   - now you can use every text processor
-- Convert the text pattern (\cite{_1_Bibtexkey}) to a JabRef reference
+- Convert the text pattern (`\cite{Bibtexkey}` or `\cite{_1_Bibtexkey}`) to a JabRef reference
   - you can create a proper reference list regardless which word processor was used before
 - **Special feature:** 
   - You can add references by using the \cite{key} function of JabRef (Press: CTRL+K in JabRef). 
