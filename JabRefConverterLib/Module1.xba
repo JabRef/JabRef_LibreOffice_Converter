@@ -1,250 +1,553 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE script:module PUBLIC "-//OpenOffice.org//DTD OfficeDocument 1.0//EN" "module.dtd">
-<script:module xmlns:script="http://openoffice.org/2000/script" script:name="Module1" script:language="StarBasic" script:moduleType="normal">REM  *****  BASIC  *****
+<script:module xmlns:script="http://openoffice.org/2000/script" script:name="Module1" script:language="StarBasic" script:moduleType="normal">Option Explicit
 
-private sSelection as string	&apos;Selected text
-private oDoc as object			&apos;Points to the current document
-private oRefMarks as object		&apos;Document references
+Private dia As Object
 
-private b as integer
-private dia As Object
-private frm As Object
-private useCslMode as Boolean	&apos;True for CSL (JABREF_), False for JStyle (JR_cite)
-
-&apos;************************* Helper Functions ***************************
-Function IsJabRefReference(ref as string) as Boolean
-    &apos; Check for both old JR_cite and new JABREF_ formats
-    IsJabRefReference = (InStr(ref, &quot;JR_cite&quot;) &gt; 0) Or (InStr(ref, &quot;JABREF_&quot;) &gt; 0)
-End Function
-
-Function GetCiteKey(ref as string) as string
-    Dim temp as string
-    temp = ref
-
-    &apos; Handle old format: JR_cite[counter]_[type]_[key]
-    If Left(temp, 7) = &quot;JR_cite&quot; Then
-        temp = Mid(temp, 8)  &apos; Strip &quot;JR_cite&quot;
-        GetCiteKey = temp
-    &apos; Handle new format: JABREF_[key] CID_[number] [command]
-    ElseIf Left(temp, 7) = &quot;JABREF_&quot; Then
-        temp = Mid(temp, 8)  &apos; Strip &quot;JABREF_&quot;
-        &apos; Extract just the cite key (everything before &quot; CID_&quot;)
-        Dim cidPos as integer
-        cidPos = InStr(temp, &quot; CID_&quot;)
-        If cidPos &gt; 0 Then
-            GetCiteKey = Left(temp, cidPos - 1)
-        Else
-            GetCiteKey = temp
-        End If
-    Else
-        GetCiteKey = temp
-    End If
-End Function
-
-&apos;************************* Main Entry Point ***************************
 Sub Main
-	BasicLibraries.LoadLibrary(&quot;JabRefConverterLib&quot;)
-	DialogLibraries.LoadLibrary(&quot;JabRefConverterLib&quot;)
-	frm = DialogLibraries.JabRefConverterLib.JabRefConvert
-	dia = CreateUnoDialog(frm)
-	dia.Execute()
+    DialogLibraries.LoadLibrary("JabRefConverterLib")
+    dia = CreateUnoDialog(DialogLibraries.JabRefConverterLib.JabRefConvert)
+    dia.Execute()
 End Sub
 
-&apos;************************* Replace JabRef reference field with cite key***************************
 Sub FromTextToReference
-	&apos; Read the selected mode from radio buttons
-	Dim oCslRadio As Object
-	oCslRadio = dia.getControl(&quot;optCslMode&quot;).Model
-
-	If oCslRadio.State = 1 Then
-		useCslMode = True
-	Else
-		useCslMode = False
-	End If
-
-	Dim SearchDesc As Object
-	Dim Doc As Object
-	dim j as integer &apos; counter for message box
-	dim l as integer &apos; counter for message box
-	dim k as integer &apos; counter for message box
-
-	Doc = ThisComponent
-
-	Dim SearchDescRegExp As Object
-	SearchDescRegExp = Doc.createSearchDescriptor
-	SearchDescRegExp.SearchString = &quot;\\cite\{[^\}]+\}&quot;
-	SearchDescRegExp.SearchRegularExpression = True
-	Found = Doc.findFirst (SearchDescRegExp)
-
-	J=0
-	l=0
-	k=0
-	b=100
-
-	&apos; b necessary for plain \cite{key} to prevent a mix up with existing jabref citations
-	&apos; by using b we start with 100 to prevent double usage
-
-	Do Until IsNull(Found)
-		Controller = Doc.CurrentController
-		VC = Controller.ViewCursor
-		VC.gotoRange(Found,False)
-		subEventReference(j,l,k)
-		Found = Doc.findNext( Found.End, SearchDescRegExp)
-	Loop
-
-	If Not IsNull(dia) then
-		dia.endExecute()
-	End If
-
-	Dim modeText as String
-	If useCslMode Then
-		modeText = &quot;CSL mode (JABREF_)&quot;
-	Else
-		modeText = &quot;JStyle mode (JR_cite)&quot;
-	End If
-
-	Msgbox (&quot;Conversion to JabRef Reference successful (&quot; &amp; modeText &amp; &quot;)&quot; &amp; chr(13) &amp; CStr(k) + &quot; (in-text) citations &quot; &amp; chr(13) &amp; CStr(j) + &quot; empty citations &quot; &amp; chr(13) &amp; CStr(l) + &quot; manually added \cite{keys} &quot; &amp; chr(13) &amp; chr(13) &amp; &quot; Now you can refresh the fields using Jabref. &quot;,0 ,&quot;OK&quot;)
+    ShowResult(ConvertTextToReferences(ThisComponent))
 End Sub
 
-&apos;************************* Convert JabRef references back to plain text ***************************
 Sub FromReferenceToText
-	dim temp as string
-	Dim i As Integer, oRefmarks, oRefmarkNames()
-	dim j as integer
-	dim l as integer
-
-	oRefmarks = ThisComponent.getReferenceMarks()
-	oRefmarkNames = oRefmarks.getElementNames()
-
-	j=0
-	l=0
-
-	&apos;  insert a string at every reference mark
-	For i = 0 To Ubound( oRefmarkNames )
-		ref = oRefmarkNames(i)
-
-		&apos; Check for both JR_cite and JABREF_ formats
-		If IsJabRefReference(ref) Then
-			temp = GetCiteKey(ref)
-
-			If InStr(temp, &quot;_3_&quot;) = 0 Then
-				anchor = oRefmarks.getByName(ref).getanchor
-				rr = anchor.gettext.createtextcursorbyrange(anchor)
-				rr.string = &quot;\cite{&quot; + temp + &quot;}&quot;
-				j = j + 1
-			Else
-				&apos; For empty citations
-				anchor = oRefmarks.getByName(ref).getanchor
-				rr = anchor.gettext.createtextcursorbyrange(anchor)
-				rr.string = &quot;\cite{&quot; + temp + &quot;}&quot;
-				l = l + 1
-			End If
-		End If
-	Next
-
-	&apos; Dispose all remaining jabref references in a second loop
-	For i = 0 To Ubound( oRefmarkNames )
-		ref = oRefmarkNames(i)
-		If IsJabRefReference(ref) Then
-			On Error Resume Next
-			oRefmarks.getByName(ref).dispose()
-		End If
-	Next
-
-	If Not IsNull(dia) then
-		dia.endExecute()
-	End If
-
-	Msgbox (&quot;Conversion to plain text code successful &quot; &amp; chr(13) &amp; CStr(j) + &quot; (in-text) citations &quot; &amp; chr(13) &amp; CStr(l) + &quot; empty citations&quot;, ,&quot;OK&quot;)
+    ShowResult(ConvertReferencesToText(ThisComponent))
 End Sub
 
-&apos;************************* Create a reference that JabRef can process ***************************
-Sub subEventReference(j, l, k as integer)
-	dim oRefField as object
-	Dim i As Integer, oRefmarks, oRefmarkNames()
-	Dim citeKey as string
-	Dim cleanKey as string
-	Dim isPlainCite as Boolean
-
-	oDoc = ThisComponent
-	oRefMarks = oDoc.Referencemarks
-	oRefmarkNames = oRefmarks.getElementNames()
-
-	oRefField = oDoc.createInstance(&quot;com.sun.star.text.ReferenceMark&quot;)
-	oSel = oDoc.getCurrentSelection().getByIndex(0)
-
-	If Left(oSel.getString, 6) = &quot;\cite{&quot; Then
-		citeKey = Mid(oSel.getString, 7)
-		citeKey = Left(citeKey, Len(citeKey) - 1)
-
-		&apos; Determine if this is a plain cite (no _1_, _2_, _3_ markers)
-		isPlainCite = (InStr(citeKey, &quot;_1_&quot;) = 0 And InStr(citeKey, &quot;_2_&quot;) = 0 And InStr(citeKey, &quot;_3_&quot;) = 0)
-
-		&apos; Count citations
-		If InStr(citeKey, &quot;_3_&quot;) &lt;&gt; 0 Then
-			j = j + 1  &apos; Empty citations
-		ElseIf InStr(citeKey, &quot;_2_&quot;) &lt;&gt; 0 Or InStr(citeKey, &quot;_1_&quot;) &lt;&gt; 0 Then
-			k = k + 1  &apos; In-text citations with markers
-		ElseIf isPlainCite Then
-			l = l + 1  &apos; Plain citations without markers
-		End If
-
-		&apos; Create reference mark in selected format
-		If useCslMode Then
-			&apos; CSL format: JABREF_[key] CID_[counter] cite
-			&apos; Clean the cite key first (remove any _1_, _2_, _3_ markers)
-			cleanKey = citeKey
-			If InStr(cleanKey, &quot;_1_&quot;) &gt; 0 Then
-				cleanKey = Mid(cleanKey, InStr(cleanKey, &quot;_1_&quot;) + 3)
-			ElseIf InStr(cleanKey, &quot;_2_&quot;) &gt; 0 Then
-				cleanKey = Mid(cleanKey, InStr(cleanKey, &quot;_2_&quot;) + 3)
-			ElseIf InStr(cleanKey, &quot;_3_&quot;) &gt; 0 Then
-				cleanKey = Mid(cleanKey, InStr(cleanKey, &quot;_3_&quot;) + 3)
-			End If
-
-			sSelection = &quot;JABREF_&quot; + cleanKey + &quot; CID_&quot; + CStr(b) + &quot; cite&quot;
-			b = b + 1
-		Else
-			&apos; JStyle format: JR_cite[counter]_[type]_[key]
-			If isPlainCite Then
-				sSelection = &quot;JR_cite&quot; + CStr(b) + &quot;_1_&quot; + citeKey
-
-				&apos; Check for duplicates
-				For i = 0 To Ubound(oRefmarkNames)
-					If InStr(oRefmarkNames(i), sSelection) Then
-						b = b + 1
-						sSelection = &quot;JR_cite&quot; + CStr(b) + &quot;_1_&quot; + citeKey
-					End If
-				Next
-			Else
-				sSelection = &quot;JR_cite&quot; + citeKey
-			End If
-		End If
-	End If
-
-	subCreate(oRefField, sSelection)
-End Sub
-
-&apos;********************* Create the field (sub routine) ***********************
-Sub subCreate(oField as object, sText as string)
-    Dim oText As Object
-    Dim oSelection As Object
-
-    &apos; Set the field name
-    oField.setName(sText)
-
-    &apos; Get current selection in document
-    oSelection = oDoc.getCurrentSelection()
-    oText = oSelection.getByIndex(0)
-
-    &apos; Check if text contains &quot;_3_&quot; (empty citation)
-    If InStr(oText.getString(), &quot;_3_&quot;) &lt;&gt; 0 Then
-        &apos; Delete selected text as it should be empty
-        oText.String = &quot;&quot;
+Private Sub ShowResult(result As Variant)
+    If IsObject(dia) Then dia.endExecute()
+    If result(0) &lt; 0 Then
+        MsgBox result(1), 16, "JabRef converter"
+    Else
+        MsgBox CStr(result(0)) &amp; " citation(s) converted.", 64, "JabRef converter"
     End If
-
-    &apos; Insert field at current cursor position
-    oDoc.currentController.ViewCursor.Text.insertTextContent(oDoc.currentController.ViewCursor, oField, Not (InStr(oText.getString(), &quot;_3_&quot;) &lt;&gt; 0))
 End Sub
 
+Private Function IsCitationType(value As String) As Boolean
+    Select Case value
+        Case "NORMAL", "IN_TEXT", "EMPTY", "NOPAR", "AUTHOR_ONLY", "YEAR_ONLY"
+            IsCitationType = True
+    End Select
+End Function
+
+Private Function IsUid(value As String) As Boolean
+    Dim i As Long, c As String
+    If Len(value) = 0 Then Exit Function
+    For i = 1 To Len(value)
+        c = Mid(value, i, 1)
+        If InStr("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-", c) = 0 Then Exit Function
+    Next i
+    IsUid = True
+End Function
+
+Private Function IsKey(value As String) As Boolean
+    Dim i As Long, c As Long
+    If Len(value) = 0 Then Exit Function
+    For i = 1 To Len(value)
+        c = Asc(Mid(value, i, 1))
+        If c &lt; 0 Then c = c + 65536
+        Select Case c
+            Case 9 To 13, 32, 44, 133, 160, 5760, 8192 To 8202, 8232, 8233, 8239, 8287, 12288
+                Exit Function
+        End Select
+    Next i
+    IsKey = True
+End Function
+
+Private Function LastSpace(value As String) As Long
+    Dim i As Long
+    For i = Len(value) To 1 Step -1
+        If Mid(value, i, 1) = " " Then
+            LastSpace = i
+            Exit Function
+        End If
+    Next i
+End Function
+
+Private Function ParseMark(value As String, ByRef keys As Variant, ByRef kind As String, ByRef uid As String) As Boolean
+    Dim parts As Variant, i As Long, item As String, cut As Long
+    cut = LastSpace(value)
+    If cut = 0 Then Exit Function
+    uid = Mid(value, cut + 1)
+    If Not IsUid(uid) Then Exit Function
+    value = Left(value, cut - 1)
+    cut = LastSpace(value)
+    If cut = 0 Then Exit Function
+    kind = Mid(value, cut + 1)
+    If Not IsCitationType(kind) Then Exit Function
+    If cut = 1 Then Exit Function
+    parts = Split(Left(value, cut - 1), ", ")
+    ReDim keys(UBound(parts))
+    For i = 0 To UBound(parts)
+        item = parts(i)
+        If Left(item, 7) &lt;&gt; "JABREF_" Then Exit Function
+        keys(i) = Mid(item, 8)
+        If Not IsKey(keys(i)) Then Exit Function
+    Next i
+    ParseMark = True
+End Function
+
+Private Function MarkName(keys As Variant, kind As String, uid As String) As String
+    Dim i As Long, result As String
+    For i = 0 To UBound(keys)
+        If i &gt; 0 Then result = result &amp; ", "
+        result = result &amp; "JABREF_" &amp; keys(i)
+    Next i
+    MarkName = result &amp; " " &amp; kind &amp; " " &amp; uid
+End Function
+
+Private Function EscapePart(value As String) As String
+    Dim i As Long, c As String, result As String
+    For i = 1 To Len(value)
+        c = Mid(value, i, 1)
+        Select Case c
+            Case "\", "{", "}", "[", "]", ";", ","
+                result = result &amp; "\" &amp; c
+            Case Chr(10)
+                result = result &amp; "\n"
+            Case Chr(13)
+                result = result &amp; "\r"
+            Case Chr(9)
+                result = result &amp; "\t"
+            Case Else
+                result = result &amp; c
+        End Select
+    Next i
+    EscapePart = result
+End Function
+
+' Read one list, retaining empty slots. Unknown escapes and bare structural delimiters are invalid.
+Private Function ReadList(value As String, ByRef pos As Long, terminator As String, separator As String, ByRef items As Variant) As Boolean
+    Dim c As String, part As String, n As Long
+    ReDim items(0)
+    Do While pos &lt;= Len(value)
+        c = Mid(value, pos, 1)
+        pos = pos + 1
+        If c = "\" Then
+            If pos &gt; Len(value) Then Exit Function
+            c = Mid(value, pos, 1)
+            pos = pos + 1
+            Select Case c
+                Case "\", "{", "}", "[", "]", ";", ","
+                    part = part &amp; c
+                Case "n"
+                    part = part &amp; Chr(10)
+                Case "r"
+                    part = part &amp; Chr(13)
+                Case "t"
+                    part = part &amp; Chr(9)
+                Case Else
+                    Exit Function
+            End Select
+        ElseIf c = terminator Then
+            items(n) = part
+            ReadList = True
+            Exit Function
+        ElseIf c = separator Then
+            items(n) = part
+            n = n + 1
+            ReDim Preserve items(n)
+            part = ""
+        ElseIf InStr("{}[];,", c) &gt; 0 Then
+            Exit Function
+        Else
+            part = part &amp; c
+        End If
+    Loop
+End Function
+
+Private Function ParseToken(value As String, ByRef size As Long, ByRef keys As Variant, ByRef kind As String, ByRef uid As String, ByRef pages As Variant, ByRef hasPages As Boolean) As Boolean
+    Dim pos As Long, meta As Variant, i As Long
+    size = Len(value)
+    kind = "NORMAL"
+    uid = ""
+    hasPages = False
+    If Left(value, 5) &lt;&gt; "\cite" Then Exit Function
+    pos = 6
+    If Mid(value, pos, 1) = "[" Then
+        pos = pos + 1
+        If Not ReadList(value, pos, "]", ";", meta) Then Exit Function
+        kind = meta(0)
+        If Not IsCitationType(kind) Then Exit Function
+        If UBound(meta) &gt;= 1 Then uid = meta(1)
+        If uid &lt;&gt; "" Then
+            If Not IsUid(uid) Then Exit Function
+        End If
+        hasPages = UBound(meta) &gt;= 2
+    End If
+    If Mid(value, pos, 1) &lt;&gt; "{" Then Exit Function
+    pos = pos + 1
+    If Not ReadList(value, pos, "}", ",", keys) Then Exit Function
+    For i = 0 To UBound(keys)
+        If Not IsKey(keys(i)) Then Exit Function
+    Next i
+    If hasPages Then
+        If UBound(meta) - 2 &lt;&gt; UBound(keys) Then Exit Function
+        ReDim pages(UBound(keys))
+        For i = 0 To UBound(keys)
+            pages(i) = meta(i + 2)
+            If pages(i) &lt;&gt; "-" Then
+                If Left(pages(i), 1) &lt;&gt; "=" Then Exit Function
+            End If
+        Next i
+    End If
+    size = pos - 1
+    ParseToken = True
+End Function
+
+Private Function PageProperty(uid As String, index As Long) As String
+    PageProperty = "JabRef_page_info:" &amp; uid &amp; ":" &amp; CStr(index)
+End Function
+
+Private Function ReadPages(doc As Object, uid As String, keys As Variant, ByRef pages As Variant) As Boolean
+    Dim props As Object, info As Object, i As Long, name As String, value As Variant
+    props = doc.DocumentProperties.UserDefinedProperties
+    info = props.PropertySetInfo
+    ReDim pages(UBound(keys))
+    For i = 0 To UBound(keys)
+        name = PageProperty(uid, i)
+        pages(i) = "-"
+        If uid &lt;&gt; "" And info.hasPropertyByName(name) Then
+            value = props.getPropertyValue(name)
+            If VarType(value) &lt;&gt; 8 Then Exit Function
+            pages(i) = "=" &amp; value
+        End If
+    Next i
+    ReadPages = True
+End Function
+
+Private Function CanWritePages(doc As Object, uid As String, pages As Variant) As Boolean
+    Dim props As Object, info As Object, definition As Variant, i As Long, name As String, value As Variant
+    props = doc.DocumentProperties.UserDefinedProperties
+    info = props.PropertySetInfo
+    For i = 0 To UBound(pages)
+        name = PageProperty(uid, i)
+        If info.hasPropertyByName(name) Then
+            definition = info.getPropertyByName(name)
+            If pages(i) = "-" Then
+                If (definition.Attributes And 128) = 0 Then Exit Function
+            Else
+                value = props.getPropertyValue(name)
+                If VarType(value) &lt;&gt; 8 Then Exit Function
+                If value &lt;&gt; Mid(pages(i), 2) And (definition.Attributes And 1) &lt;&gt; 0 Then Exit Function
+            End If
+        End If
+    Next i
+    CanWritePages = True
+End Function
+
+Private Sub WritePages(doc As Object, uid As String, pages As Variant)
+    Dim props As Object, i As Long, name As String, exists As Boolean, value As String
+    props = doc.DocumentProperties.UserDefinedProperties
+    For i = 0 To UBound(pages)
+        name = PageProperty(uid, i)
+        exists = props.PropertySetInfo.hasPropertyByName(name)
+        If pages(i) = "-" Then
+            If exists Then props.removeProperty(name)
+        Else
+            value = Mid(pages(i), 2)
+            If exists Then
+                If props.getPropertyValue(name) &lt;&gt; value Then props.setPropertyValue(name, value)
+            Else
+                props.addProperty(name, 128, value)
+            End If
+        End If
+    Next i
+End Sub
+
+Private Function PortableToken(keys As Variant, kind As String, uid As String, pages As Variant) As String
+    Dim result As String, i As Long
+    result = "\cite[" &amp; kind &amp; ";" &amp; uid
+    For i = 0 To UBound(pages)
+        result = result &amp; ";" &amp; EscapePart(pages(i))
+    Next i
+    result = result &amp; "]{"
+    For i = 0 To UBound(keys)
+        If i &gt; 0 Then result = result &amp; ","
+        result = result &amp; EscapePart(keys(i))
+    Next i
+    PortableToken = result &amp; "}"
+End Function
+
+Private Function UsedIds(doc As Object) As String
+    Dim names As Variant, name As Variant, keys As Variant, kind As String, uid As String, result As String
+    names = doc.ReferenceMarks.ElementNames
+    For Each name In names
+        If ParseMark(CStr(name), keys, kind, uid) Then result = result &amp; "|" &amp; uid &amp; "|"
+    Next name
+    UsedIds = result
+End Function
+
+' These native opaque IDs are not CUID2. Check document identities and orphan page properties too.
+Private Function NewUid(doc As Object, used As String) As String
+    Static seeded As Boolean
+    Static serial As Long
+    Dim candidate As String, i As Long, props As Variant, prop As Variant, collision As Boolean
+    If Not seeded Then
+        Randomize
+        seeded = True
+    End If
+    props = doc.DocumentProperties.UserDefinedProperties.PropertySetInfo.Properties
+    Do
+        serial = serial + 1
+        candidate = "c" &amp; Hex(serial) &amp; "_"
+        For i = 1 To 24
+            candidate = candidate &amp; Mid("abcdefghijklmnopqrstuvwxyz0123456789", Int(Rnd * 36) + 1, 1)
+        Next i
+        collision = InStr(used, "|" &amp; candidate &amp; "|") &gt; 0
+        For Each prop In props
+            If Left(prop.Name, Len("JabRef_page_info:" &amp; candidate &amp; ":")) = "JabRef_page_info:" &amp; candidate &amp; ":" Then collision = True
+        Next prop
+    Loop While collision
+    NewUid = candidate
+End Function
+
+' Ranges in different stories (for example a footnote and body) cannot be compared.
+Private Function StartsBeforeEnd(first As Object, second As Object) As Boolean
+    On Error GoTo DifferentStory
+    StartsBeforeEnd = first.Text.compareRegionStarts(first.Start, second.End) &gt; 0
+DifferentStory:
+End Function
+
+Private Function IsInsideSkippedRange(candidate As Object, skipped As Object) As Boolean
+    On Error GoTo DifferentStory
+    If Not IsObject(skipped) Then Exit Function
+    IsInsideSkippedRange = candidate.Text.compareRegionStarts(candidate.Start, skipped.Start) &lt;= 0 And candidate.Text.compareRegionStarts(candidate.Start, skipped.End) &gt; 0
+DifferentStory:
+End Function
+
+Private Function OverlapsReference(doc As Object, candidate As Object, ignoredName As String) As Boolean
+    Dim name As Variant, anchor As Object
+    For Each name In doc.ReferenceMarks.ElementNames
+        If name &lt;&gt; ignoredName Then
+            anchor = doc.ReferenceMarks.getByName(name).Anchor
+            If StartsBeforeEnd(candidate, anchor) And StartsBeforeEnd(anchor, candidate) Then
+                OverlapsReference = True
+                Exit Function
+            End If
+            If anchor.String = "" Then
+                If PointInRange(anchor, candidate) Then
+                    OverlapsReference = True
+                    Exit Function
+                End If
+            End If
+        End If
+    Next name
+End Function
+
+Private Function PointInRange(point As Object, span As Object) As Boolean
+    On Error GoTo DifferentStory
+    PointInRange = span.Text.compareRegionStarts(span.Start, point.Start) &gt;= 0 And span.Text.compareRegionStarts(point.Start, span.End) &gt;= 0
+DifferentStory:
+End Function
+
+' Writer counts supplementary Unicode characters once; Basic Len counts UTF-16 code units.
+Private Function SelectToken(cursor As Object, size As Long) As Boolean
+    Dim value As String, steps As Long, i As Long, code As Long, chunk As Long
+    value = Left(cursor.String, size)
+    steps = size
+    For i = 1 To size - 1
+        code = Asc(Mid(value, i, 1))
+        If code &lt; 0 Then code = code + 65536
+        If code &gt;= 55296 And code &lt;= 56319 Then steps = steps - 1
+    Next i
+    cursor.gotoRange(cursor.Start, False)
+    Do While steps &gt; 0
+        chunk = steps
+        If chunk &gt; 30000 Then chunk = 30000
+        If Not cursor.goRight(chunk, True) Then Exit Function
+        steps = steps - chunk
+    Loop
+    SelectToken = cursor.String = value
+End Function
+
+' Insert inside the old range, then remove its old prefix/suffix. Replacing at an edge
+' would make an adjacent, unrelated reference mark expand over the new text in Writer.
+Private Sub ReplaceRange(cursor As Object, replacement As String)
+    Dim head As Object, tail As Object, inserted As Object
+    If Len(cursor.String) &lt; 2 Then
+        cursor.String = replacement
+        Exit Sub
+    End If
+    head = cursor.Text.createTextCursorByRange(cursor.Start)
+    tail = cursor.Text.createTextCursorByRange(cursor.End)
+    inserted = cursor.Text.createTextCursorByRange(cursor.Start)
+    inserted.goRight(1, False)
+    inserted.String = replacement
+    tail.gotoRange(inserted.End, True)
+    tail.String = ""
+    head.gotoRange(inserted.Start, True)
+    head.String = ""
+    cursor.gotoRange(inserted.Start, False)
+    cursor.gotoRange(inserted.End, True)
+End Sub
+
+Private Function RangeCursor(span As Object) As Object
+    Dim cursor As Object
+    cursor = span.Text.createTextCursorByRange(span.Start)
+    cursor.gotoRange(span.End, True)
+    RangeCursor = cursor
+End Function
+
+Private Function StartsBefore(first As Object, second As Object) As Boolean
+    On Error GoTo DifferentStory
+    StartsBefore = first.Text.compareRegionStarts(first.Start, second.Start) &gt; 0
+DifferentStory:
+End Function
+
+' Name enumeration is insertion order, not document order. Export right to left in each
+' text story so replacing an adjacent anchor cannot swallow an already emitted token.
+Private Function ExportOrder(doc As Object) As Variant
+    Dim names As Variant, anchors As Variant, i As Long, j As Long, total As Long
+    Dim tempName As String, tempAnchor As Object
+    names = doc.ReferenceMarks.ElementNames
+    total = UBound(names)
+    If total &lt; 0 Then
+        ExportOrder = names
+        Exit Function
+    End If
+    ReDim anchors(total)
+    For i = 0 To total
+        anchors(i) = doc.ReferenceMarks.getByName(names(i)).Anchor
+    Next i
+    For i = 0 To total
+        For j = i + 1 To total
+            If StartsBefore(anchors(i), anchors(j)) Then
+                tempName = names(i)
+                names(i) = names(j)
+                names(j) = tempName
+                tempAnchor = anchors(i)
+                anchors(i) = anchors(j)
+                anchors(j) = tempAnchor
+            End If
+        Next j
+    Next i
+    ExportOrder = names
+End Function
+
+Function ConvertReferencesToText(doc As Object) As Variant
+    Dim lastError As String
+    Dim undo As Object, locked As Boolean, entered As Boolean, recording As Boolean
+    Dim names As Variant, name As Variant, mark As Object, anchor As Object, cursor As Object
+    Dim keys As Variant, pages As Variant, kind As String, uid As String, token As String, count As Long, i As Long
+    On Error GoTo Failed
+    lastError = ""
+    undo = doc.UndoManager
+    recording = doc.RecordChanges
+    undo.enterUndoContext("JabRef references to portable text")
+    entered = True
+    doc.lockControllers()
+    locked = True
+    doc.RecordChanges = False
+    names = ExportOrder(doc)
+    For i = 0 To UBound(names)
+        name = names(i)
+        If ParseMark(CStr(name), keys, kind, uid) Then
+            mark = doc.ReferenceMarks.getByName(name)
+            anchor = mark.Anchor
+            If ReadPages(doc, uid, keys, pages) And Not OverlapsReference(doc, anchor, CStr(name)) Then
+                cursor = RangeCursor(anchor)
+                token = PortableToken(keys, kind, uid, pages)
+                ' Replacing the whole anchor inserts the token and detaches the old reference.
+                ' dispose alone would delete its citation text; it must happen after replacement.
+                cursor.String = token
+                mark.dispose()
+                count = count + 1
+            End If
+        End If
+    Next i
+    GoTo Finished
+Failed:
+    lastError = "Conversion stopped: " &amp; Error$ &amp; " (" &amp; CStr(Err) &amp; "). Review the document before saving."
+    count = -1
+Finished:
+    On Error Resume Next
+    doc.RecordChanges = recording
+    If locked Then doc.unlockControllers()
+    If entered Then undo.leaveUndoContext()
+    ConvertReferencesToText = Array(count, lastError)
+End Function
+
+Function ConvertTextToReferences(doc As Object) As Variant
+    Dim lastError As String
+    Dim undo As Object, locked As Boolean, entered As Boolean, recording As Boolean
+    Dim search As Object, found As Object, i As Long, cursor As Object, skipped As Object
+    Dim keys As Variant, pages As Variant, kind As String, uid As String, originalUid As String
+    Dim hasPages As Boolean, size As Long, used As String, reserved As String, count As Long, valid As Boolean
+    Dim mark As Object, placeholder As String, candidates As Variant, candidateCount As Long, total As Long
+    On Error GoTo Failed
+    lastError = ""
+    undo = doc.UndoManager
+    recording = doc.RecordChanges
+    undo.enterUndoContext("JabRef portable text to references")
+    entered = True
+    doc.lockControllers()
+    locked = True
+    doc.RecordChanges = False
+    search = doc.createSearchDescriptor()
+    search.SearchString = "\cite"
+    search.SearchRegularExpression = False
+    found = doc.findAll(search)
+    used = UsedIds(doc)
+    reserved = used
+    ' Snapshot whole, non-overlapping tokens before replacement invalidates nested search hits.
+    total = found.Count
+    ReDim candidates(total)
+    For i = 0 To found.Count - 1
+        If Not IsInsideSkippedRange(found.getByIndex(i), skipped) Then
+            cursor = RangeCursor(found.getByIndex(i))
+            cursor.gotoEndOfParagraph(True)
+            If ParseToken(cursor.String, size, keys, kind, uid, pages, hasPages) Then
+                If SelectToken(cursor, size) Then
+                    skipped = RangeCursor(cursor)
+                    If Not OverlapsReference(doc, cursor, "") Then
+                        candidates(candidateCount) = cursor
+                        candidateCount = candidateCount + 1
+                        If uid &lt;&gt; "" Then reserved = reserved &amp; "|" &amp; uid &amp; "|"
+                    End If
+                End If
+            Else
+                ' Do not reinterpret nested cite-like fragments inside malformed input.
+                skipped = cursor
+            End If
+        End If
+    Next i
+    For i = 0 To candidateCount - 1
+        cursor = candidates(i)
+        valid = ParseToken(cursor.String, size, keys, kind, uid, pages, hasPages)
+        If valid Then
+            originalUid = uid
+            If uid = "" Or InStr(used, "|" &amp; uid &amp; "|") &gt; 0 Then uid = NewUid(doc, reserved)
+            ' Omitted page slots reuse document metadata, also when a duplicate ID is remapped.
+            If Not hasPages Then valid = ReadPages(doc, originalUid, keys, pages)
+            If valid Then valid = CanWritePages(doc, uid, pages)
+            If valid Then
+                placeholder = ""
+                If kind &lt;&gt; "EMPTY" Then placeholder = Join(keys, ", ")
+                mark = doc.createInstance("com.sun.star.text.ReferenceMark")
+                mark.Name = MarkName(keys, kind, uid)
+                ReplaceRange(cursor, Chr(8203) &amp; placeholder &amp; Chr(8203))
+                cursor.Text.insertTextContent(cursor, mark, True)
+                WritePages(doc, uid, pages)
+                used = used &amp; "|" &amp; uid &amp; "|"
+                reserved = reserved &amp; "|" &amp; uid &amp; "|"
+                count = count + 1
+            End If
+        End If
+    Next i
+    GoTo Finished
+Failed:
+    lastError = "Conversion stopped: " &amp; Error$ &amp; " (" &amp; CStr(Err) &amp; "). Review the document before saving."
+    count = -1
+Finished:
+    On Error Resume Next
+    doc.RecordChanges = recording
+    If locked Then doc.unlockControllers()
+    If entered Then undo.leaveUndoContext()
+    ConvertTextToReferences = Array(count, lastError)
+End Function
 </script:module>
